@@ -1,4 +1,5 @@
 duckdb>=0.10.0
+mypy>=1.0.0
 pandas>=2.0.0
 pandas-stubs>=2.0.0
 pyarrow>=14.0.0

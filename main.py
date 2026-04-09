@@ -5,6 +5,12 @@ from pathlib import Path
 import pandas as pd
 from pyspark.sql import SparkSession
 
+from src.governance.quality import (
+    check_not_empty,
+    check_no_nulls,
+    check_unique,
+    check_accepted_values,
+)
 from src.pipeline.bronze import ingest_csv
 from src.pipeline.silver import clean_athlete_events, clean_noc_regions
 from src.pipeline.gold import load_batch
@@ -51,18 +57,32 @@ def run_pipeline(data_dir: Path, incremental: bool = False) -> None:
     clean_athlete_events(spark, bronze_dir / "athlete_events", silver_dir / "athlete_events")
     clean_noc_regions(spark,    bronze_dir / "noc_regions",    silver_dir / "noc_regions")
 
+    logger.info("=== GOVERNANCE: SILVER QUALITY CHECKS ===")
+    silver_events_df = spark.read.parquet((silver_dir / "athlete_events").as_posix())
+    silver_noc_df = spark.read.parquet((silver_dir / "noc_regions").as_posix())
+
+    check_not_empty(silver_events_df, "silver.athlete_events")
+    check_not_empty(silver_noc_df, "silver.noc_regions")
+
+    silver_events_pd: pd.DataFrame = silver_events_df.toPandas()
+    check_no_nulls(silver_events_pd, ["athlete_id", "noc", "games", "sport", "event"], "silver.athlete_events")
+    check_unique(silver_noc_df.toPandas(), ["noc"], "silver.noc_regions")
+    check_accepted_values(silver_events_pd, "season", {"Summer", "Winter"}, "silver.athlete_events")
+    check_accepted_values(silver_events_pd, "sex", {"M", "F"}, "silver.athlete_events")
+    check_accepted_values(
+        silver_events_pd, "medal", {"Gold", "Silver", "Bronze", None}, "silver.athlete_events",
+    )
+
     logger.info("=== GOLD LAYER ===")
 
     # Read silver with Spark, then convert to pandas for SCD batch processing
-    all_events: pd.DataFrame = (
-        spark.read
-        .parquet((silver_dir / "athlete_events").as_posix())
-        .toPandas()
-    )
+    all_events: pd.DataFrame = silver_events_pd
     noc_path = silver_dir / "noc_regions"
 
+    all_events = all_events.dropna(subset=["games", "year"])
+
     editions: list[str] = sorted(
-        all_events["games"].dropna().unique().tolist(),
+        all_events["games"].unique().tolist(),
         key=lambda g: int(str(g).split(" ")[0]) if str(g).split(" ")[0].isdigit() else 0,
     )
     logger.info("Processing %s Olympic editions as individual batches", len(editions))

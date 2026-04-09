@@ -8,8 +8,16 @@ Data engineering pipeline for 120 years of Olympic history, built on a self-host
 
 The platform follows a **Medallion architecture** (Bronze → Silver → Gold) across five layers.
 
-```
-Data Sources  →  Cron job  →  MinIO + Delta Lake  →  Spark  →  Governance  →  DuckDB
+```mermaid
+flowchart TD
+    A["Data Sources\nCSV files · REST APIs · Operational databases"]
+    B["Cron Job\nTriggers the pipeline once per Olympic edition"]
+    C["MinIO + Delta Lake\nObject storage · ACID transactions · time-travel\nBronze -> Silver -> Gold"]
+    D["Apache Spark\nDistributed batch processing · ML / Deep Learning"]
+    E["Governance Layer\nData quality checks · Pipeline lineage tracking"]
+    F["DuckDB\nGold layer star schema · Embedded analytical database"]
+
+    A --> B --> C --> D --> E --> F
 ```
 
 | Component | Role | Why |
@@ -40,12 +48,56 @@ This architecture is modular. Each component can be replaced independently as re
 
 ## Star Schema
 
-```
-             dim_game (SCD 0)
-                  │
-dim_athlete ── fact_results ── dim_event (SCD 1)
-(SCD 2)           │
-             dim_noc (SCD 2)
+```mermaid
+erDiagram
+    fact_results {
+        BIGINT result_sk PK
+        BIGINT athlete_sk FK
+        BIGINT event_sk FK
+        BIGINT noc_sk FK
+        BIGINT game_sk FK
+        VARCHAR medal
+        DOUBLE age
+        DOUBLE height
+        DOUBLE weight
+    }
+    dim_athlete {
+        BIGINT athlete_sk PK
+        BIGINT athlete_nk
+        VARCHAR name
+        VARCHAR sex
+        VARCHAR team
+        DATE valid_from
+        DATE valid_to
+        BOOLEAN is_current
+    }
+    dim_event {
+        BIGINT event_sk PK
+        VARCHAR event_name
+        VARCHAR sport
+        VARCHAR season
+    }
+    dim_noc {
+        BIGINT noc_sk PK
+        VARCHAR noc_code
+        VARCHAR region
+        VARCHAR notes
+        DATE valid_from
+        DATE valid_to
+        BOOLEAN is_current
+    }
+    dim_game {
+        BIGINT game_sk PK
+        VARCHAR games
+        INTEGER year
+        VARCHAR season
+        VARCHAR city
+    }
+
+    fact_results }o--|| dim_athlete : "athlete_sk"
+    fact_results }o--|| dim_event   : "event_sk"
+    fact_results }o--|| dim_noc     : "noc_sk"
+    fact_results }o--|| dim_game    : "game_sk"
 ```
 
 | Table | SCD | Reason |

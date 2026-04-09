@@ -1,0 +1,6 @@
+duckdb>=0.10.0
+pandas>=2.0.0
+pandas-stubs>=2.0.0
+pyarrow>=14.0.0
+pyspark>=3.4.0,<4.0.0
+pytest>=9.0.0
